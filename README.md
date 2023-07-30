@@ -9,12 +9,13 @@ The BufferEncoder method is a recursive function which encodes defined kind of o
 
 Usage of these methods is similar with TextEncoder and TextDecoder too. Bufferizing any kind of object could be done with code:
 
+```
 import { BufferEncoder } from "BufferControl"
 
 encoder = new BufferEncoder()
 
-...
+_..._
 
 myText = "Lorem ipsum dolor sit amet!"
 myTextBuffer = encoder.encode( myText )
-
+```
