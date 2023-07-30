@@ -14,7 +14,7 @@ import { BufferEncoder } from "BufferControl"
 
 encoder = new BufferEncoder()
 
-_..._
+...
 
 myText = "Lorem ipsum dolor sit amet!"
 myTextBuffer = encoder.encode( myText )
