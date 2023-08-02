@@ -40,6 +40,14 @@ export class BufferEncoder
 					encode value.toString()
 					data[ offset ] = 5
 
+				when Float32Array
+					for v, i in value
+						data[ byte++ ] = v >>> 24 & 0xff
+						data[ byte++ ] = v >>> 16 & 0xff
+						data[ byte++ ] = v >>>  8 & 0xff
+						data[ byte++ ] = v & 0xff
+					data[ offset ] = 7
+
 				else 
 					if  value instanceof Node 
 						byte = byte - 3
@@ -134,6 +142,18 @@ export class BufferDecoder
 					
 				when 6
 					document.getElementById decode.call this, byte-3, size, 4
+					
+				when 7
+					count = size / Float32Array.BYTES_PER_ELEMENT
+					array = new Float32Array count
+					index = 0
+
+					while count--
+						array[ index++ ] =
+							@getFloat32 byte
+						byte = byte + 4
+
+					array
 
 				else undefined
 

@@ -7,7 +7,7 @@ export var BufferEncoder = (function() {
       data = new Array();
       byte = 0;
       encode = function(value) {
-        var byteLength, c, i, key, len, offset;
+        var byteLength, c, i, j, k, key, len, len1, offset, v;
         byte = (offset = byte) + 3;
         if (value == null) {
           data[offset] = 3;
@@ -29,8 +29,8 @@ export var BufferEncoder = (function() {
               data[offset] = 2;
               break;
             case String:
-              for (i = 0, len = value.length; i < len; i++) {
-                c = value[i];
+              for (j = 0, len = value.length; j < len; j++) {
+                c = value[j];
                 data[byte++] = c.charCodeAt(0);
               }
               data[offset] = 4;
@@ -39,6 +39,16 @@ export var BufferEncoder = (function() {
               byte = byte - 3;
               encode(value.toString());
               data[offset] = 5;
+              break;
+            case Float32Array:
+              for (i = k = 0, len1 = value.length; k < len1; i = ++k) {
+                v = value[i];
+                data[byte++] = v >>> 24 & 0xff;
+                data[byte++] = v >>> 16 & 0xff;
+                data[byte++] = v >>> 8 & 0xff;
+                data[byte++] = v & 0xff;
+              }
+              data[offset] = 7;
               break;
             default:
               if (value instanceof Node) {
@@ -76,7 +86,7 @@ export var BufferDecoder = (function() {
     decode(buffer) {
       var data, decode, view;
       data = (decode = function(byte, size, type) {
-        var array, keyLength, keyOffset, length, object, text, valLength, valOffset;
+        var array, count, index, keyLength, keyOffset, length, object, text, valLength, valOffset;
         type = type != null ? type : this.getUint8(byte);
         size = size != null ? size : this.getUint16(byte + 1);
         byte = byte + 3;
@@ -121,6 +131,15 @@ export var BufferDecoder = (function() {
             return Number(decode.call(this, byte - 3, size, 4));
           case 6:
             return document.getElementById(decode.call(this, byte - 3, size, 4));
+          case 7:
+            count = size / Float32Array.BYTES_PER_ELEMENT;
+            array = new Float32Array(count);
+            index = 0;
+            while (count--) {
+              array[index++] = this.getFloat32(byte);
+              byte = byte + 4;
+            }
+            return array;
           default:
             return void 0;
         }
