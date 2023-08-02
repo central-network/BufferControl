@@ -7,7 +7,7 @@ export var BufferEncoder = (function() {
       data = new Array();
       byte = 0;
       encode = function(value) {
-        var byteLength, c, i, j, k, key, len, len1, offset, v;
+        var byteLength, c, i, j, k, key, l, len, len1, len2, len3, m, offset, v;
         byte = (offset = byte) + 3;
         if (value == null) {
           data[offset] = 3;
@@ -50,6 +50,21 @@ export var BufferEncoder = (function() {
               }
               data[offset] = 7;
               break;
+            case Uint16Array:
+              for (i = l = 0, len2 = value.length; l < len2; i = ++l) {
+                v = value[i];
+                data[byte++] = v >>> 8 & 0xff;
+                data[byte++] = v & 0xff;
+              }
+              data[offset] = 8;
+              break;
+            case Uint8Array:
+              for (i = m = 0, len3 = value.length; m < len3; i = ++m) {
+                v = value[i];
+                data[byte++] = v & 0xff;
+              }
+              data[offset] = 9;
+              break;
             default:
               if (value instanceof Node) {
                 byte = byte - 3;
@@ -86,7 +101,7 @@ export var BufferDecoder = (function() {
     decode(buffer) {
       var data, decode, view;
       data = (decode = function(byte, size, type) {
-        var array, count, index, keyLength, keyOffset, length, object, text, valLength, valOffset;
+        var array, bytes, count, index, keyLength, keyOffset, length, object, text, valLength, valOffset;
         type = type != null ? type : this.getUint8(byte);
         size = size != null ? size : this.getUint16(byte + 1);
         byte = byte + 3;
@@ -132,12 +147,33 @@ export var BufferDecoder = (function() {
           case 6:
             return document.getElementById(decode.call(this, byte - 3, size, 4));
           case 7:
-            count = size / Float32Array.BYTES_PER_ELEMENT;
+            bytes = Float32Array.BYTES_PER_ELEMENT;
+            count = size / bytes;
             array = new Float32Array(count);
             index = 0;
             while (count--) {
               array[index++] = this.getFloat32(byte);
-              byte = byte + 4;
+              byte = byte + bytes;
+            }
+            return array;
+          case 8:
+            bytes = Uint16Array.BYTES_PER_ELEMENT;
+            count = size / bytes;
+            array = new Uint16Array(count);
+            index = 0;
+            while (count--) {
+              array[index++] = this.getUint8(byte);
+              byte = byte + bytes;
+            }
+            return array;
+          case 9:
+            bytes = Uint8Array.BYTES_PER_ELEMENT;
+            count = size / bytes;
+            array = new Uint8Array(count);
+            index = 0;
+            while (count--) {
+              array[index++] = this.getUint8(byte);
+              byte = byte + bytes;
             }
             return array;
           default:

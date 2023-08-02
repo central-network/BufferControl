@@ -48,6 +48,17 @@ export class BufferEncoder
 						data[ byte++ ] = v & 0xff
 					data[ offset ] = 7
 
+				when Uint16Array
+					for v, i in value
+						data[ byte++ ] = v >>>  8 & 0xff
+						data[ byte++ ] = v & 0xff
+					data[ offset ] = 8
+
+				when Uint8Array
+					for v, i in value
+						data[ byte++ ] = v & 0xff
+					data[ offset ] = 9
+
 				else 
 					if  value instanceof Node 
 						byte = byte - 3
@@ -144,14 +155,41 @@ export class BufferDecoder
 					document.getElementById decode.call this, byte-3, size, 4
 					
 				when 7
-					count = size / Float32Array.BYTES_PER_ELEMENT
+					bytes = Float32Array.BYTES_PER_ELEMENT
+					count = size / bytes
 					array = new Float32Array count
 					index = 0
 
 					while count--
 						array[ index++ ] =
 							@getFloat32 byte
-						byte = byte + 4
+						byte = byte + bytes
+
+					array
+
+				when 8
+					bytes = Uint16Array.BYTES_PER_ELEMENT
+					count = size / bytes
+					array = new Uint16Array count
+					index = 0
+
+					while count--
+						array[ index++ ] =
+							@getUint8 byte
+						byte = byte + bytes
+
+					array
+
+				when 9
+					bytes = Uint8Array.BYTES_PER_ELEMENT
+					count = size / bytes
+					array = new Uint8Array count
+					index = 0
+
+					while count--
+						array[ index++ ] =
+							@getUint8 byte
+						byte = byte + bytes
 
 					array
 
