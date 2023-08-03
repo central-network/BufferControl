@@ -12,7 +12,7 @@ export class BufferEncoder
 
 			unless value?
 
-				data[ offset ] = 3
+				data[ offset ] = 4
 				data[ byte++ ] = 1 * (value isnt null)
 
 			else switch value.constructor
@@ -21,29 +21,30 @@ export class BufferEncoder
 					for key of value
 						encode key
 						encode value[ key ]
+					data[ offset ] = 1
 
 				when Array
 					value.forEach encode
-					data[ offset ] = 1
+					data[ offset ] = 2
 
 				when Boolean
 					data[ byte++ ] = value * 1
-					data[ offset ] = 2
+					data[ offset ] = 3
 
 				when String
 					for c in value
-						code = 42 + c.charCodeAt 0 
+						code = c.charCodeAt 0 
 						data[ byte++ ] = code >>> 8 & 0xff 
 						data[ byte++ ] = code & 0xff 
-					data[ offset ] = 4
-
-				when Number
-					byte = byte - 3
-					encode value.toString()
 					data[ offset ] = 5
 
+				when Number
+					for c in value.toString()
+						data[ byte++ ] = c.charCodeAt 0 
+					data[ offset ] = 6
+
 				when Float32Array
-					data[ offset ] = 7
+					data[ offset ] = 8
 					for v in value
 						f32i[ byte ] = v
 						byte = byte + 4
@@ -54,24 +55,24 @@ export class BufferEncoder
 						data[ byte++ ] = v >>> 16 & 0xff
 						data[ byte++ ] = v >>> 8 & 0xff
 						data[ byte++ ] = v & 0xff
-					data[ offset ] = 8
+					data[ offset ] = 9
 
 				when Uint16Array
 					for v, i in value
 						data[ byte++ ] = v >>> 8 & 0xff
 						data[ byte++ ] = v & 0xff
-					data[ offset ] = 9
+					data[ offset ] = 10
 
 				when Uint8Array
 					for v, i in value
 						data[ byte++ ] = v & 0xff
-					data[ offset ] = 10
+					data[ offset ] = 11
 
 				else 
 					if  value instanceof Node 
 						byte = byte - 3
 						encode value.id
-						data[ offset ] = 6
+						data[ offset ] = 7
 
 
 			byteLength = byte - offset - 3
@@ -89,13 +90,10 @@ export class BufferEncoder
 		while byte--
 
 			if  val = f32i[ byte ]
-				writer.setFloat32( byte, val )
+				writer.setFloat32 byte, val
 				
-			else
-				writer.setUint8(
-					byte, data[ byte ]
-				)
-				
+			else if val = data[ byte ]
+				writer.setUint8 byte, val
 
 		data.length = 0
 
@@ -114,7 +112,7 @@ export class BufferDecoder
 
 			switch type
 
-				when 0
+				when 1
 					object = new Object()
 
 					while size
@@ -135,7 +133,7 @@ export class BufferDecoder
 
 					object
 
-				when 1
+				when 2
 					array = new Array()
 
 					while size
@@ -149,29 +147,33 @@ export class BufferDecoder
 
 					array
 
-				when 2
+				when 3
 					1 is @getUint8 byte++
 
-				when 3
+				when 4
 					if 0 is @getUint8 byte++
 					then null else undefined
 
-				when 4
+				when 5
 					text = ""
 					while size--
 						text = text + String.fromCharCode(
-							@getUint16( byte++ ) - 42
+							@getUint16 byte++ 
 						)
 						byte++ ; size--
 					text
 
-				when 5
-					Number decode.call this, byte-3, size, 4 
-					
 				when 6
-					document.getElementById decode.call this, byte-3, size, 4
+					text = "" ; while size--
+						text = text + String.fromCharCode(
+							@getUint8 byte++ 
+						)
+					Number text
 					
 				when 7
+					document.getElementById decode.call this, byte-3, size, 5
+					
+				when 8
 					bytes = Float32Array.BYTES_PER_ELEMENT
 					count = size / bytes
 					array = new Float32Array count
@@ -183,7 +185,7 @@ export class BufferDecoder
 
 					array
 
-				when 8
+				when 9
 					bytes = Uint32Array.BYTES_PER_ELEMENT
 					count = size / bytes
 					array = new Uint32Array count
@@ -196,7 +198,7 @@ export class BufferDecoder
 
 					array
 
-				when 9
+				when 10
 					bytes = Uint16Array.BYTES_PER_ELEMENT
 					count = size / bytes
 					array = new Uint16Array count
@@ -209,7 +211,7 @@ export class BufferDecoder
 
 					array
 
-				when 10
+				when 11
 					bytes = Uint8Array.BYTES_PER_ELEMENT
 					count = size / bytes
 					array = new Uint8Array count
@@ -233,53 +235,89 @@ export class BufferObject extends DataView
 	encoder 	: new BufferEncoder()
 	decoder		: new BufferDecoder()
 
-	constructor : ( object = {}, byteLength = 2048 ) ->
-		super new ArrayBuffer byteLength
-
-		@setUint16 0, TYPE = 1245
-		@setUint32 2, OFFSET = 12
-		@setUint32 6, SIZE = byteLength - OFFSET
+	constructor : ( object = {}, maxByteLength = 1e6 ) ->
+		super new ArrayBuffer 0, { maxByteLength }
 
 		for key, val of object
 			@write key, val
 
+		console.error 1, @buffer
 		return new Proxy this, {
 			set : BufferObject.__setter__
-			get : ( v, key ) -> v.findKey key 
+			get : BufferObject.__getter__
 		}
 
-	allocate	: ( byteLength = 0, offset = @offset ) ->
-		unless @byteLength > offset + byteLength
-			throw [ "Buffer object has no more space to allocate!", { arguments } ]
-		@offset = offset + byteLength ; offset
+	resize		: ( byteLength ) ->
+		unless @buffer.maxByteLength > byteLength
+			throw [ "Max byte length exceed!", 
+			@buffer.maxByteLength, byteLength, @ ]
 
-	write		: ( key, val ) =>
-		keyBuffer = @encoder.encode key
+		@buffer.resize byteLength ; @ 
+
+	write		: ( key, val, match ) =>
 		valBuffer = @encoder.encode val
-		totalByte = keyBuffer.byteLength + valBuffer.byteLength
+		valLength = valBuffer.byteLength
 
-		return unless r = offset = @allocate(
-			keyBuffer.byteLength + valBuffer.byteLength
-		)
+		unless match?
+			keyBuffer = @encoder.encode key
+			
+			byteLength = (
+				(offset = @byteLength) + 
+				(keyBuffer.byteLength) + 
+				(valBuffer.byteLength)
+			)
 
-		for v in new Uint8Array keyBuffer
-			@setUint8 offset++, v
+			@resize byteLength
 
-		for v in new Uint8Array valBuffer
-			@setUint8 offset++, v
+			for v in new Uint8Array keyBuffer
+				@setUint8 offset++, v
 
-		this
+			for v in new Uint8Array valBuffer
+				@setUint8 offset++, v
+
+			return this
+
+		[ offset , valOffset , endOffset ] = match
+		( diffBytes = valLength - ( endOffset - valOffset ) )
+
+
+		unless diffBytes
+
+			for v in new Uint8Array valBuffer
+				@setUint8 valOffset++, v
+
+		else if diffBytes > 0
+
+			@resize @byteLength + diffBytes
+
+			for i in [ @byteLength-1 ... endOffset ]
+				@setUint8 i, @getUint8 i - diffBytes
+
+			for v in new Uint8Array valBuffer
+				@setUint8 valOffset++, v
+			
+
+		else if diffBytes < 0
+			for v in new Uint8Array valBuffer
+				@setUint8 valOffset++, v
+			
+			for i in [ valOffset ... @byteLength ]
+				@setUint8 i, @getUint8 i + diffBytes
+
+			@resize @byteLength - diffBytes
+
+		return this
+
 
 	decode		: ( start, end ) ->
 		@decoder.decode @buffer.slice start, end
 
-	findKey		: ( key, offset = 12, byteLength = @byteLength ) =>
-		return if offset > byteLength
-		
+	find		: ( key, offset = 0, byteLength = @byteLength ) =>
+		return unless offset < byteLength
+		return unless @getUint8 offset
+
 		keyOffset = offset
 		keyLength = @getUint16 offset + 1
-
-		return unless keyLength
 
 		valOffset = keyOffset + 3 + keyLength
 		valLength = @getUint16  1 + valOffset 
@@ -287,38 +325,18 @@ export class BufferObject extends DataView
 		endOffset = valOffset + 3 + valLength
 
 		if  key is @decode keyOffset, valOffset 
-			return @decode valOffset, endOffset
+			return [ offset, valOffset, endOffset ]
 
-		if  0 is @getUint8 valOffset
-			offset = valOffset + 3
-			length = offset + valLength
-			
-			if subfind = @findKey key, offset, length 
-				return subfind
-
-		return @findKey key, endOffset
+		return @find key, endOffset
 
 
 	@__setter__	= ( view, key, value, proxy )	=>
-		unless view.findKey key
-			buf = view.write key, value
-			console.log "buf has no key: '#{key}' new written"
-
-		return value;
+		view.write key, value, view.find key
 
 	@__getter__	= ( view, key, proxy ) =>
-		view.findKey key
+		return unless result = view.find key
+		return view.decode result[1], result[2]
 		
-Object.defineProperties BufferObject::, {
-	length : 
-		get : -> @getUint32 6 
-		set : -> @setUint32 6, arguments[0] ; @length
-	
-	offset : 
-		get : -> @getUint32 2
-		set : -> @setUint32 2, arguments[0] ; @offset		
-}
-
 export default defineProperties = ->
     Object.defineProperty Object::, "buffer", get : ->
         new BufferEncoder().encode( this )
