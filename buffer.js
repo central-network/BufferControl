@@ -1,13 +1,15 @@
-var defineProperties;
+var defineProperties,
+  boundMethodCheck = function(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new Error('Bound instance method accessed before binding'); } };
 
 export var BufferEncoder = (function() {
   class BufferEncoder {
     encode(object) {
-      var buffer, byte, data, encode, writer;
+      var buffer, byte, data, encode, f32i, val, writer;
+      f32i = new Array();
       data = new Array();
       byte = 0;
       encode = function(value) {
-        var byteLength, c, i, j, k, key, l, len, len1, len2, len3, m, offset, v;
+        var byteLength, c, code, i, j, k, key, l, len, len1, len2, len3, len4, m, n, offset, v;
         byte = (offset = byte) + 3;
         if (value == null) {
           data[offset] = 3;
@@ -31,7 +33,9 @@ export var BufferEncoder = (function() {
             case String:
               for (j = 0, len = value.length; j < len; j++) {
                 c = value[j];
-                data[byte++] = c.charCodeAt(0);
+                code = 42 + c.charCodeAt(0);
+                data[byte++] = code >>> 8 & 0xff;
+                data[byte++] = code & 0xff;
               }
               data[offset] = 4;
               break;
@@ -41,29 +45,37 @@ export var BufferEncoder = (function() {
               data[offset] = 5;
               break;
             case Float32Array:
-              for (i = k = 0, len1 = value.length; k < len1; i = ++k) {
+              data[offset] = 7;
+              for (k = 0, len1 = value.length; k < len1; k++) {
+                v = value[k];
+                f32i[byte] = v;
+                byte = byte + 4;
+              }
+              break;
+            case Uint32Array:
+              for (i = l = 0, len2 = value.length; l < len2; i = ++l) {
                 v = value[i];
                 data[byte++] = v >>> 24 & 0xff;
                 data[byte++] = v >>> 16 & 0xff;
                 data[byte++] = v >>> 8 & 0xff;
                 data[byte++] = v & 0xff;
               }
-              data[offset] = 7;
+              data[offset] = 8;
               break;
             case Uint16Array:
-              for (i = l = 0, len2 = value.length; l < len2; i = ++l) {
+              for (i = m = 0, len3 = value.length; m < len3; i = ++m) {
                 v = value[i];
                 data[byte++] = v >>> 8 & 0xff;
                 data[byte++] = v & 0xff;
               }
-              data[offset] = 8;
+              data[offset] = 9;
               break;
             case Uint8Array:
-              for (i = m = 0, len3 = value.length; m < len3; i = ++m) {
+              for (i = n = 0, len4 = value.length; n < len4; i = ++n) {
                 v = value[i];
                 data[byte++] = v & 0xff;
               }
-              data[offset] = 9;
+              data[offset] = 10;
               break;
             default:
               if (value instanceof Node) {
@@ -80,7 +92,11 @@ export var BufferEncoder = (function() {
       };
       writer = new DataView(new ArrayBuffer(encode(object)));
       while (byte--) {
-        writer.setUint8(byte, data[byte]);
+        if (val = f32i[byte]) {
+          writer.setFloat32(byte, val);
+        } else {
+          writer.setUint8(byte, data[byte]);
+        }
       }
       data.length = 0;
       buffer = writer.buffer;
@@ -113,7 +129,7 @@ export var BufferDecoder = (function() {
               keyLength = this.getUint16(keyOffset + 1);
               valOffset = keyOffset + keyLength + 3;
               valLength = this.getUint16(valOffset + 1);
-              object[decode.call(this, keyOffset, keyLength)] = decode.call(this, valOffset, valLength);
+              object[decode.call(this, keyOffset, keyLength)] = !valLength ? null : decode.call(this, valOffset, valLength);
               byte = byte + keyLength + valLength + 6;
               size = size - keyLength - valLength - 6;
             }
@@ -139,7 +155,9 @@ export var BufferDecoder = (function() {
           case 4:
             text = "";
             while (size--) {
-              text = text + String.fromCharCode(this.getUint8(byte++));
+              text = text + String.fromCharCode(this.getUint16(byte++) - 42);
+              byte++;
+              size--;
             }
             return text;
           case 5:
@@ -157,16 +175,26 @@ export var BufferDecoder = (function() {
             }
             return array;
           case 8:
+            bytes = Uint32Array.BYTES_PER_ELEMENT;
+            count = size / bytes;
+            array = new Uint32Array(count);
+            index = 0;
+            while (count--) {
+              array[index++] = this.getUint32(byte);
+              byte = byte + bytes;
+            }
+            return array;
+          case 9:
             bytes = Uint16Array.BYTES_PER_ELEMENT;
             count = size / bytes;
             array = new Uint16Array(count);
             index = 0;
             while (count--) {
-              array[index++] = this.getUint8(byte);
+              array[index++] = this.getUint16(byte);
               byte = byte + bytes;
             }
             return array;
-          case 9:
+          case 10:
             bytes = Uint8Array.BYTES_PER_ELEMENT;
             count = size / bytes;
             array = new Uint8Array(count);
@@ -191,6 +219,126 @@ export var BufferDecoder = (function() {
   return BufferDecoder;
 
 }).call(this);
+
+export var BufferObject = (function() {
+  class BufferObject extends DataView {
+    constructor(object = {}, byteLength = 2048) {
+      var OFFSET, SIZE, TYPE, key, val;
+      super(new ArrayBuffer(byteLength));
+      this.write = this.write.bind(this);
+      this.findKey = this.findKey.bind(this);
+      this.setUint16(0, TYPE = 1245);
+      this.setUint32(2, OFFSET = 12);
+      this.setUint32(6, SIZE = byteLength - OFFSET);
+      for (key in object) {
+        val = object[key];
+        this.write(key, val);
+      }
+      return new Proxy(this, {
+        set: BufferObject.__setter__,
+        get: function(v, key) {
+          return v.findKey(key);
+        }
+      });
+    }
+
+    allocate(byteLength = 0, offset = this.offset) {
+      if (!(this.byteLength > offset + byteLength)) {
+        throw ["Buffer object has no more space to allocate!", {arguments}];
+      }
+      this.offset = offset + byteLength;
+      return offset;
+    }
+
+    write(key, val) {
+      var j, k, keyBuffer, len, len1, offset, r, ref, ref1, totalByte, v, valBuffer;
+      boundMethodCheck(this, BufferObject);
+      keyBuffer = this.encoder.encode(key);
+      valBuffer = this.encoder.encode(val);
+      totalByte = keyBuffer.byteLength + valBuffer.byteLength;
+      if (!(r = offset = this.allocate(keyBuffer.byteLength + valBuffer.byteLength))) {
+        return;
+      }
+      ref = new Uint8Array(keyBuffer);
+      for (j = 0, len = ref.length; j < len; j++) {
+        v = ref[j];
+        this.setUint8(offset++, v);
+      }
+      ref1 = new Uint8Array(valBuffer);
+      for (k = 0, len1 = ref1.length; k < len1; k++) {
+        v = ref1[k];
+        this.setUint8(offset++, v);
+      }
+      return this;
+    }
+
+    decode(start, end) {
+      return this.decoder.decode(this.buffer.slice(start, end));
+    }
+
+    findKey(key, offset = 12) {
+      var endOffset, keyLength, keyOffset, valLength, valOffset;
+      boundMethodCheck(this, BufferObject);
+      if (offset > this.byteLength) {
+        return;
+      }
+      keyOffset = offset;
+      keyLength = this.getUint16(offset + 1);
+      if (!keyLength) {
+        return;
+      }
+      valOffset = keyOffset + 3 + keyLength;
+      valLength = this.getUint16(1 + valOffset);
+      endOffset = valOffset + 3 + valLength;
+      if (key === this.decode(keyOffset, valOffset)) {
+        return this.decode(valOffset, endOffset);
+      }
+      return this.findKey(key, endOffset);
+    }
+
+    static __setter__(view, key, value, proxy) {
+      var buf;
+      if (!view.findKey(key)) {
+        buf = view.write(key, value);
+        console.log(`buf has no key: '${key}' new written`);
+      }
+      return value;
+    }
+
+    static __getter__(view, key, proxy) {
+      return view.findKey(key);
+    }
+
+  };
+
+  BufferObject.prototype.encoder = new BufferEncoder();
+
+  BufferObject.prototype.decoder = new BufferDecoder();
+
+  return BufferObject;
+
+}).call(this);
+
+Object.defineProperties(BufferObject.prototype, {
+  length: {
+    get: function() {
+      return this.getUint32(6);
+    },
+    set: function() {
+      this.setUint32(6, arguments[0]);
+      return this.length;
+    }
+  },
+  offset: {
+    get: function() {
+      return this.getUint32(2);
+    },
+    set: function() {
+      this.setUint32(2, arguments[0]);
+      return this.offset;
+    }
+  }
+});
 
 export default defineProperties = function() {
   Object.defineProperty(Object.prototype, "buffer", {
