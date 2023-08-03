@@ -273,8 +273,8 @@ export class BufferObject extends DataView
 	decode		: ( start, end ) ->
 		@decoder.decode @buffer.slice start, end
 
-	findKey		: ( key, offset = 12 ) =>
-		return if offset > @byteLength
+	findKey		: ( key, offset = 12, byteLength = @byteLength ) =>
+		return if offset > byteLength
 		
 		keyOffset = offset
 		keyLength = @getUint16 offset + 1
@@ -289,6 +289,13 @@ export class BufferObject extends DataView
 		if  key is @decode keyOffset, valOffset 
 			return @decode valOffset, endOffset
 
+		if  0 is @getUint8 valOffset
+			offset = valOffset + 3
+			length = offset + valLength
+			
+			if subfind = @findKey key, offset, length 
+				return subfind
+
 		return @findKey key, endOffset
 
 
@@ -296,6 +303,7 @@ export class BufferObject extends DataView
 		unless view.findKey key
 			buf = view.write key, value
 			console.log "buf has no key: '#{key}' new written"
+
 		return value;
 
 	@__getter__	= ( view, key, proxy ) =>

@@ -276,10 +276,10 @@ export var BufferObject = (function() {
       return this.decoder.decode(this.buffer.slice(start, end));
     }
 
-    findKey(key, offset = 12) {
-      var endOffset, keyLength, keyOffset, valLength, valOffset;
+    findKey(key, offset = 12, byteLength = this.byteLength) {
+      var endOffset, keyLength, keyOffset, length, subfind, valLength, valOffset;
       boundMethodCheck(this, BufferObject);
-      if (offset > this.byteLength) {
+      if (offset > byteLength) {
         return;
       }
       keyOffset = offset;
@@ -292,6 +292,13 @@ export var BufferObject = (function() {
       endOffset = valOffset + 3 + valLength;
       if (key === this.decode(keyOffset, valOffset)) {
         return this.decode(valOffset, endOffset);
+      }
+      if (0 === this.getUint8(valOffset)) {
+        offset = valOffset + 3;
+        length = offset + valLength;
+        if (subfind = this.findKey(key, offset, length)) {
+          return subfind;
+        }
       }
       return this.findKey(key, endOffset);
     }
