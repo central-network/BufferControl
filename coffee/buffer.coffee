@@ -8,7 +8,8 @@ export class BufferEncoder
 		byte = 0
 
 		encode = ( value ) ->
-			byte = ( offset = byte ) + 3
+			offset = byte + 1
+			byte = byte + 4
 
 			unless value?
 
@@ -70,13 +71,14 @@ export class BufferEncoder
 
 				else 
 					if  value instanceof Node 
-						byte = byte - 3
+						byte = byte - 4
 						encode value.id
 						data[ offset ] = 7
 
 
-			byteLength = byte - offset - 3
-			data[ offset + 1 ] = byteLength >> 8
+			byteLength = byte - offset + 1 - 4
+
+			data[ offset + 1 ] = byteLength >> 8 & 0xff
 			data[ offset + 2 ] = byteLength & 0xff
 
 			byte
@@ -100,8 +102,7 @@ export class BufferEncoder
 		buffer = writer.buffer
 		writer = null ; buffer 
 
-	@encodeString	: ( string ) ->
-		
+
 
 export class BufferDecoder
 
@@ -109,9 +110,9 @@ export class BufferDecoder
 	decode 		: ( buffer ) ->
 		data = ( decode = ( byte, size, type ) ->
 
-			type = type ? @getUint8 byte
-			size = size ? @getUint16 byte + 1
-			byte = byte + 3
+			type = type ? @getUint16 byte
+			size = size ? @getUint16 byte + 2
+			byte = byte + 4
 
 			switch type
 
@@ -119,20 +120,23 @@ export class BufferDecoder
 					object = new Object()
 
 					while size
-
 						keyOffset = byte
-						keyLength = @getUint16 keyOffset + 1
+						keyLength = @getUint16( keyOffset + 2 )
 
 						
-						valOffset = keyOffset + keyLength + 3
-						valLength = @getUint16 valOffset + 1
+						valOffset = keyOffset + keyLength + 4
+						valLength = @getUint16( valOffset + 2 )
 
 						object[ decode.call this, keyOffset, keyLength
 						] = unless valLength then null
 						else decode.call this, valOffset, valLength
 
-						byte = byte + keyLength + valLength + 6
-						size = size - keyLength - valLength - 6
+						length = valLength + keyLength + 8
+
+						byte = byte + length
+						size = size - length
+
+
 
 					object
 
@@ -141,12 +145,12 @@ export class BufferDecoder
 
 					while size
 
-						length = @getUint16 byte + 1
+						length = @getUint16 byte + 2
 						length and array[ array.length
 						] = decode.call this, byte, length
 						
-						byte = byte + length + 3
-						size = size - length - 3
+						byte = byte + length + 4
+						size = size - length - 4
 
 					array
 
@@ -174,7 +178,7 @@ export class BufferDecoder
 					Number text
 					
 				when 7
-					document.getElementById decode.call this, byte-3, size, 5
+					document.getElementById decode.call this, byte-4, size, 5
 					
 				when 8
 					bytes = Float32Array.BYTES_PER_ELEMENT

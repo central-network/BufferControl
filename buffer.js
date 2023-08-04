@@ -9,7 +9,8 @@ export var BufferEncoder = (function() {
       byte = 0;
       encode = function(value) {
         var byteLength, c, code, i, j, k, key, l, len, len1, len2, len3, len4, len5, m, n, o, offset, ref, v;
-        byte = (offset = byte) + 3;
+        offset = byte + 1;
+        byte = byte + 4;
         if (value == null) {
           data[offset] = 4;
           data[byte++] = 1 * (value !== null);
@@ -82,14 +83,14 @@ export var BufferEncoder = (function() {
               break;
             default:
               if (value instanceof Node) {
-                byte = byte - 3;
+                byte = byte - 4;
                 encode(value.id);
                 data[offset] = 7;
               }
           }
         }
-        byteLength = byte - offset - 3;
-        data[offset + 1] = byteLength >> 8;
+        byteLength = byte - offset + 1 - 4;
+        data[offset + 1] = byteLength >> 8 & 0xff;
         data[offset + 2] = byteLength & 0xff;
         return byte;
       };
@@ -107,8 +108,6 @@ export var BufferEncoder = (function() {
       return buffer;
     }
 
-    static encodeString(string) {}
-
   };
 
   BufferEncoder.prototype.__proto__ = null;
@@ -123,29 +122,30 @@ export var BufferDecoder = (function() {
       var data, decode, view;
       data = (decode = function(byte, size, type) {
         var array, bytes, count, index, keyLength, keyOffset, length, object, text, valLength, valOffset;
-        type = type != null ? type : this.getUint8(byte);
-        size = size != null ? size : this.getUint16(byte + 1);
-        byte = byte + 3;
+        type = type != null ? type : this.getUint16(byte);
+        size = size != null ? size : this.getUint16(byte + 2);
+        byte = byte + 4;
         switch (type) {
           case 1:
             object = new Object();
             while (size) {
               keyOffset = byte;
-              keyLength = this.getUint16(keyOffset + 1);
-              valOffset = keyOffset + keyLength + 3;
-              valLength = this.getUint16(valOffset + 1);
+              keyLength = this.getUint16(keyOffset + 2);
+              valOffset = keyOffset + keyLength + 4;
+              valLength = this.getUint16(valOffset + 2);
               object[decode.call(this, keyOffset, keyLength)] = !valLength ? null : decode.call(this, valOffset, valLength);
-              byte = byte + keyLength + valLength + 6;
-              size = size - keyLength - valLength - 6;
+              length = valLength + keyLength + 8;
+              byte = byte + length;
+              size = size - length;
             }
             return object;
           case 2:
             array = new Array();
             while (size) {
-              length = this.getUint16(byte + 1);
+              length = this.getUint16(byte + 2);
               length && (array[array.length] = decode.call(this, byte, length));
-              byte = byte + length + 3;
-              size = size - length - 3;
+              byte = byte + length + 4;
+              size = size - length - 4;
             }
             return array;
           case 3:
@@ -172,7 +172,7 @@ export var BufferDecoder = (function() {
             }
             return Number(text);
           case 7:
-            return document.getElementById(decode.call(this, byte - 3, size, 5));
+            return document.getElementById(decode.call(this, byte - 4, size, 5));
           case 8:
             bytes = Float32Array.BYTES_PER_ELEMENT;
             count = size / bytes;
