@@ -230,7 +230,9 @@ export class BufferDecoder
 
 		view = null ; data
 
+	@decodeString	= ( buffer, start, end ) ->
 		
+
 export default defineProperties = ->
     Object.defineProperty Object::, "buffer", get : ->
         new BufferEncoder().encode( this )
