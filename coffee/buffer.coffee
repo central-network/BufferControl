@@ -100,6 +100,9 @@ export class BufferEncoder
 		buffer = writer.buffer
 		writer = null ; buffer 
 
+	@encodeString	: ( string ) ->
+		
+
 export class BufferDecoder
 
 	__proto__ 	: null

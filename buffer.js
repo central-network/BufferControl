@@ -107,6 +107,8 @@ export var BufferEncoder = (function() {
       return buffer;
     }
 
+    static encodeString(string) {}
+
   };
 
   BufferEncoder.prototype.__proto__ = null;
