@@ -219,6 +219,8 @@ export var BufferDecoder = (function() {
       return data;
     }
 
+    static decodeString(buffer, start, end) {}
+
   };
 
   BufferDecoder.prototype.__proto__ = null;
