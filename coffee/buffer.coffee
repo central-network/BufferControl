@@ -34,9 +34,15 @@ export class BufferEncoder
 
 				when String
 					for c in value
-						code = c.charCodeAt 0 
-						data[ byte++ ] = code >>> 8 & 0xff 
-						data[ byte++ ] = code & 0xff 
+						code = c.charCodeAt 0
+						if  code > 255 
+							data[ byte++ ] = 1 
+							data[ byte++ ] = code >>> 8 & 0xff 
+							data[ byte++ ] = code & 0xff 
+						else
+							data[ byte++ ] = code 
+
+
 					data[ offset ] = 5
 
 				when Number
@@ -78,6 +84,7 @@ export class BufferEncoder
 
 			byteLength = byte - offset + 1 - 4
 
+			data[ offset - 1 ] = 0
 			data[ offset + 1 ] = byteLength >> 8 & 0xff
 			data[ offset + 2 ] = byteLength & 0xff
 
@@ -97,17 +104,42 @@ export class BufferEncoder
 			else if val = data[ byte ]
 				writer.setUint8 byte, val
 
+		
 		data.length = 0
 
 		buffer = writer.buffer
 		writer = null ; buffer 
+			
+	string 		: ( value ) ->
+		data = new Array()
+		byte = 0
 
+		for c in value
+			code = c.charCodeAt 0
+			if  code > 255 
+				data[ byte++ ] = 1 
+				data[ byte++ ] = code >>> 8 & 0xff 
+				data[ byte++ ] = code & 0xff 
+			else
+				data[ byte++ ] = code 
+			
+		buffer = new ArrayBuffer byte
+		writer = new Uint8Array buffer
+
+		while byte--
+			writer[ byte ] = data[ byte ]
+
+		data.length = 0
+		writer = null
+
+		return buffer
 
 
 export class BufferDecoder
 
 	__proto__ 	: null
-	decode 		: ( buffer ) ->
+	decode 		: ( buffer, offset, length ) ->
+
 		data = ( decode = ( byte, size, type ) ->
 
 			type = type ? @getUint16 byte
@@ -164,10 +196,16 @@ export class BufferDecoder
 				when 5
 					text = ""
 					while size--
-						text = text + String.fromCharCode(
-							@getUint16 byte++ 
-						)
-						byte++ ; size--
+
+						code = @getUint8 byte++
+						unless 1 - code
+							code = (
+								@getUint8( byte++ ) + 
+								@getUint8( byte++ )
+							)
+							size = size - 2
+
+						text = text + String.fromCharCode( code )
 					text
 
 				when 6
@@ -233,12 +271,27 @@ export class BufferDecoder
 
 				else undefined
 
-		).call( view = new DataView( buffer ), 0 )
+		).call( view = new DataView( buffer, offset, length ), 0 )
 
 		view = null ; data
-
-	@decodeString	= ( buffer, start, end ) ->
 		
+	string		: ( buffer, offset, length ) ->
+
+		tarray = new Uint8Array buffer, offset, length
+		offset = 0
+		string = ""
+
+		while code = tarray[ offset++ ]
+
+			unless code - 1
+				code = 255 + (
+					tarray[ offset++ ] + 
+					tarray[ offset++ ]
+				)
+
+			string = string + String.fromCharCode code
+		
+		return string
 
 export default defineProperties = ->
     Object.defineProperty Object::, "buffer", get : ->

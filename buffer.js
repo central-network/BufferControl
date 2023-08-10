@@ -35,8 +35,13 @@ export var BufferEncoder = (function() {
               for (j = 0, len = value.length; j < len; j++) {
                 c = value[j];
                 code = c.charCodeAt(0);
-                data[byte++] = code >>> 8 & 0xff;
-                data[byte++] = code & 0xff;
+                if (code > 255) {
+                  data[byte++] = 1;
+                  data[byte++] = code >>> 8 & 0xff;
+                  data[byte++] = code & 0xff;
+                } else {
+                  data[byte++] = code;
+                }
               }
               data[offset] = 5;
               break;
@@ -90,6 +95,7 @@ export var BufferEncoder = (function() {
           }
         }
         byteLength = byte - offset + 1 - 4;
+        data[offset - 1] = 0;
         data[offset + 1] = byteLength >> 8 & 0xff;
         data[offset + 2] = byteLength & 0xff;
         return byte;
@@ -108,6 +114,31 @@ export var BufferEncoder = (function() {
       return buffer;
     }
 
+    string(value) {
+      var buffer, byte, c, code, data, j, len, writer;
+      data = new Array();
+      byte = 0;
+      for (j = 0, len = value.length; j < len; j++) {
+        c = value[j];
+        code = c.charCodeAt(0);
+        if (code > 255) {
+          data[byte++] = 1;
+          data[byte++] = code >>> 8 & 0xff;
+          data[byte++] = code & 0xff;
+        } else {
+          data[byte++] = code;
+        }
+      }
+      buffer = new ArrayBuffer(byte);
+      writer = new Uint8Array(buffer);
+      while (byte--) {
+        writer[byte] = data[byte];
+      }
+      data.length = 0;
+      writer = null;
+      return buffer;
+    }
+
   };
 
   BufferEncoder.prototype.__proto__ = null;
@@ -118,10 +149,10 @@ export var BufferEncoder = (function() {
 
 export var BufferDecoder = (function() {
   class BufferDecoder {
-    decode(buffer) {
+    decode(buffer, offset, length) {
       var data, decode, view;
       data = (decode = function(byte, size, type) {
-        var array, bytes, count, index, keyLength, keyOffset, length, object, text, valLength, valOffset;
+        var array, bytes, code, count, index, keyLength, keyOffset, object, text, valLength, valOffset;
         type = type != null ? type : this.getUint16(byte);
         size = size != null ? size : this.getUint16(byte + 2);
         byte = byte + 4;
@@ -160,9 +191,12 @@ export var BufferDecoder = (function() {
           case 5:
             text = "";
             while (size--) {
-              text = text + String.fromCharCode(this.getUint16(byte++));
-              byte++;
-              size--;
+              code = this.getUint8(byte++);
+              if (!(1 - code)) {
+                code = this.getUint8(byte++) + this.getUint8(byte++);
+                size = size - 2;
+              }
+              text = text + String.fromCharCode(code);
             }
             return text;
           case 6:
@@ -216,12 +250,24 @@ export var BufferDecoder = (function() {
           default:
             return void 0;
         }
-      }).call(view = new DataView(buffer), 0);
+      }).call(view = new DataView(buffer, offset, length), 0);
       view = null;
       return data;
     }
 
-    static decodeString(buffer, start, end) {}
+    string(buffer, offset, length) {
+      var code, string, tarray;
+      tarray = new Uint8Array(buffer, offset, length);
+      offset = 0;
+      string = "";
+      while (code = tarray[offset++]) {
+        if (!(code - 1)) {
+          code = 255 + (tarray[offset++] + tarray[offset++]);
+        }
+        string = string + String.fromCharCode(code);
+      }
+      return string;
+    }
 
   };
 
